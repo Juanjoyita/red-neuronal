@@ -41,7 +41,7 @@ plt.show()
 y_train = to_categorical(y_train_raw, 10)
 y_test = to_categorical(y_test_raw, 10)
 
-# Normalización Z-Score (Media y Desviación Estándar)
+# Normalización Z-Score
 mean = np.mean(x_train_raw, axis=(0, 1, 2, 3))
 std = np.std(x_train_raw, axis=(0, 1, 2, 3))
 x_train = (x_train_raw - mean) / (std + 1e-7)
@@ -66,9 +66,8 @@ datagen.fit(x_train)
 # ==============================
 def build_model():
     model = models.Sequential()
-    wd = 1e-4 # Weight Decay
+    wd = 1e-4 
 
-    # Bloque 1
     model.add(layers.Conv2D(64, (3,3), padding='same', kernel_regularizer=regularizers.l2(wd), input_shape=(32,32,3), activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Conv2D(64, (3,3), padding='same', activation='relu'))
@@ -76,7 +75,6 @@ def build_model():
     model.add(layers.MaxPooling2D((2,2)))
     model.add(layers.Dropout(0.2))
 
-    # Bloque 2
     model.add(layers.Conv2D(128, (3,3), padding='same', kernel_regularizer=regularizers.l2(wd), activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Conv2D(128, (3,3), padding='same', activation='relu'))
@@ -84,7 +82,6 @@ def build_model():
     model.add(layers.MaxPooling2D((2,2)))
     model.add(layers.Dropout(0.3))
 
-    # Bloque 3
     model.add(layers.Conv2D(256, (3,3), padding='same', kernel_regularizer=regularizers.l2(wd), activation='relu'))
     model.add(layers.BatchNormalization())
     model.add(layers.Conv2D(256, (3,3), padding='same', activation='relu'))
@@ -92,7 +89,6 @@ def build_model():
     model.add(layers.MaxPooling2D((2,2)))
     model.add(layers.Dropout(0.4))
 
-    # Clasificador
     model.add(layers.Flatten())
     model.add(layers.Dense(512, activation='relu'))
     model.add(layers.BatchNormalization())
@@ -116,6 +112,7 @@ checkpoint = tf.keras.callbacks.ModelCheckpoint('best_model.keras', monitor='val
 lr_reducer = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_accuracy', factor=0.5, patience=7, verbose=1)
 early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=15, restore_best_weights=True)
 
+# Nota: 45 épocas es un buen número, pero para el 90%+ a veces se necesitan 80-100.
 history = model.fit(
     datagen.flow(x_train, y_train, batch_size=64),
     epochs=45, 
@@ -124,14 +121,31 @@ history = model.fit(
 )
 
 # ==============================
-# 6. EVALUACIÓN Y PREDICCIONES
+# 6. EVALUACIÓN Y PREDICCIONES (ESTILO PROFE)
 # ==============================
 model = models.load_model('best_model.keras')
+
+# --- PREDICCIÓN INDIVIDUAL (La que pidió el usuario) ---
+print("\n--- MOSTRANDO PREDICCIÓN DE PRUEBA (MUESTRA) ---")
+img_idx = 0 
+img_test_raw = x_test_raw[img_idx]
+img_test_norm = x_test[img_idx]
+
+pred_muestra = model.predict(np.expand_dims(img_test_norm, axis=0))
+clase_p = class_names[np.argmax(pred_muestra)]
+clase_r = class_names[np.argmax(y_test[img_idx])]
+
+plt.figure(figsize=(5,5))
+plt.imshow(img_test_raw)
+plt.title(f"PREDICCIÓN: {clase_p} | REAL: {clase_r}")
+plt.axis('off')
+plt.show()
+
+# Cuadrícula de Resultados
 y_probs = model.predict(x_test)
 y_pred = np.argmax(y_probs, axis=1)
 y_true = np.argmax(y_test, axis=1)
 
-# Cuadrícula Final de Resultados
 plt.figure(figsize=(10, 12))
 for i in range(16):
     plt.subplot(4, 4, i+1)
@@ -145,31 +159,27 @@ plt.tight_layout()
 plt.show()
 
 # ==============================
-# 7. INTERFAZ PARA EL USUARIO
+# 7. INTERFAZ PARA EL USUARIO (AL FRENTE)
 # ==============================
 def predecir_imagen_nueva():
-    print("\n--- SELECCIÓN DE IMAGEN ---")
-    print("Por favor, selecciona una foto en la ventana que aparecerá.")
-    
+    print("\n--- SELECCIÓN DE IMAGEN PERSONALIZADA ---")
     root = tk.Tk()
     root.withdraw()
-    file_path = filedialog.askopenfilename(title="Selecciona una imagen")
+    root.attributes("-topmost", True) # 🔥 ESTO HACE QUE APAREZCA ENCIMA DE TODO
+    
+    file_path = filedialog.askopenfilename(title="Selecciona una imagen para el modelo")
     
     if file_path:
-        # Procesamiento de la imagen externa
         img_original = Image.open(file_path).convert('RGB')
         img_resized = img_original.resize((32, 32))
         img_array = np.array(img_resized)
         
-        # Misma normalización que el entrenamiento
         img_norm = (img_array - mean) / (std + 1e-7)
         img_tensor = np.expand_dims(img_norm, axis=0)
         
-        # Predicción
         res = model.predict(img_tensor)[0]
         idx = np.argmax(res)
         
-        # Mostrar
         plt.figure(figsize=(5,4))
         plt.imshow(img_original)
         plt.title(f"Predicción: {class_names[idx]}\nConfianza: {res[idx]*100:.2f}%")
@@ -179,5 +189,4 @@ def predecir_imagen_nueva():
     else:
         print("No se seleccionó ninguna imagen.")
 
-# Ejecutar la función de usuario al finalizar todo
 predecir_imagen_nueva()
